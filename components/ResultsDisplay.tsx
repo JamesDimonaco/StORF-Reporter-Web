@@ -25,6 +25,7 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
   const [status, setStatus] = useState<JobStatus>('pending')
   const [result, setResult] = useState<JobResult | null>(null)
   const [polling, setPolling] = useState(true)
+  const [loadingResults, setLoadingResults] = useState(false)
 
   useEffect(() => {
     const pollStatus = async () => {
@@ -35,14 +36,23 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
         }
 
         const data: JobResult = await response.json()
-        setResult(data)
         setStatus(data.status)
 
         if (data.status === 'completed' || data.status === 'failed') {
           setPolling(false)
           if (data.status === 'completed') {
-            onResultsReceived(data)
+            setLoadingResults(true)
+            // Give a moment for the results to be fully available
+            setTimeout(() => {
+              setResult(data)
+              setLoadingResults(false)
+              onResultsReceived(data)
+            }, 1000)
+          } else {
+            setResult(data)
           }
+        } else {
+          setResult(data)
         }
       } catch (error) {
         console.error('Error polling job status:', error)
@@ -100,10 +110,16 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
               <span className="text-gray-700">Analysis in progress...</span>
             </>
           )}
-          {status === 'completed' && (
+          {status === 'completed' && !loadingResults && (
             <>
               <CheckCircle className="h-5 w-5 text-green-500" />
               <span className="text-gray-700">Analysis completed successfully!</span>
+            </>
+          )}
+          {status === 'completed' && loadingResults && (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin text-green-500" />
+              <span className="text-gray-700">Loading results...</span>
             </>
           )}
           {status === 'failed' && (
@@ -127,7 +143,7 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
         )}
 
         {/* Download Buttons */}
-        {status === 'completed' && result?.outputs && (
+        {status === 'completed' && !loadingResults && result?.outputs && (
           <div className="pt-4 space-y-3">
             <h3 className="text-lg font-medium text-gray-900">Download Results</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -166,7 +182,7 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
         )}
 
         {/* Log Preview */}
-        {result?.outputs?.log && (
+        {!loadingResults && result?.outputs?.log && (
           <div className="pt-4">
             <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis Log</h3>
             <pre className="bg-gray-100 p-4 rounded overflow-x-auto text-sm">
