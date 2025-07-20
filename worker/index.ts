@@ -29,9 +29,13 @@ storfQueue.process(async (job) => {
       inputPath = path.join(tempDir, data.filename);
       outputDir = path.join(tempDir, "output");
 
+      console.log(`Saving file to: ${inputPath}`);
+      
       // Decode and save file
       const fileBuffer = Buffer.from(data.fileContent, "base64");
       await fs.writeFile(inputPath, fileBuffer);
+      console.log(`File saved, size: ${fileBuffer.length} bytes`);
+      
       await fs.mkdir(outputDir, { recursive: true });
     }
 
@@ -41,6 +45,16 @@ storfQueue.process(async (job) => {
     // Update job progress
     await job.progress(20);
 
+    // Debug: Check if file exists
+    try {
+      await fs.access(inputPath!);
+      console.log(`File exists at: ${inputPath}`);
+      const stats = await fs.stat(inputPath!);
+      console.log(`File size: ${stats.size} bytes`);
+    } catch (err) {
+      console.error(`File not found at: ${inputPath}`);
+    }
+    
     // Execute docker command
     console.log(`Executing: ${dockerCmd}`);
     const { stdout, stderr } = await execAsync(dockerCmd);
