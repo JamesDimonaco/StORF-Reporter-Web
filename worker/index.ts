@@ -55,6 +55,16 @@ storfQueue.process(async (job) => {
       console.error(`File not found at: ${inputPath}`);
     }
     
+    // Test if the file is accessible from within docker
+    const testCmd = `docker run --rm --network host -v "${path.dirname(inputPath!)}:/data" jamesdimonaco/storf-reporter:latest ls -la /data/`;
+    console.log(`Testing docker access: ${testCmd}`);
+    try {
+      const { stdout: testOut } = await execAsync(testCmd);
+      console.log(`Docker can see files: ${testOut}`);
+    } catch (err) {
+      console.error(`Docker access test failed: ${err}`);
+    }
+    
     // Execute docker command
     console.log(`Executing: ${dockerCmd}`);
     const { stdout, stderr } = await execAsync(dockerCmd);
@@ -141,7 +151,7 @@ function buildDockerCommand(
   // Use host network mode to avoid network name issues
   let cmd = `docker run --rm --network host -v "${mountDir}:/data" -v "${outputDir}:/output" jamesdimonaco/storf-reporter:latest`;
 
-  // Add annotation type and input type
+  // Add annotation type and input type as separate arguments to -anno
   cmd += ` -anno ${options.annotationType} ${options.inputType}`;
 
   // Add input path
