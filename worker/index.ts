@@ -11,13 +11,15 @@ storfQueue.process(async (job) => {
   const data: StorfJobData = job.data;
   console.log(`Processing job ${data.jobId}`);
 
+  // Declare variables outside try block
+  let inputPath = data.inputPath;
+  let outputDir = data.outputDir;
+
   try {
     // Update job progress
     await job.progress(10);
 
     // Handle file content from Vercel (base64) or local path
-    let inputPath = data.inputPath;
-    let outputDir = data.outputDir;
 
     if (data.fileContent) {
       // Vercel mode: decode base64 and save to temp
@@ -102,11 +104,13 @@ storfQueue.process(async (job) => {
     console.error(`Job ${data.jobId} failed:`, error);
 
     // Save error log
-    const jobDir = path.dirname(data.inputPath!);
-    await fs.writeFile(
-      path.join(jobDir, "error.log"),
-      error?.message || error?.toString() || "Unknown error"
-    );
+    if (inputPath) {
+      const jobDir = path.dirname(inputPath);
+      await fs.writeFile(
+        path.join(jobDir, "error.log"),
+        error?.message || error?.toString() || "Unknown error"
+      );
+    }
 
     throw error;
   }
@@ -120,7 +124,7 @@ function buildDockerCommand(
   const mountDir = path.dirname(inputPath);
   const inputFile = path.basename(inputPath);
 
-  let cmd = `docker run --rm --network storf-network -v "${mountDir}:/data" -v "${outputDir}:/output" storf-reporter:latest`;
+  let cmd = `docker run --rm --network storf-network -v "${mountDir}:/data" -v "${outputDir}:/output" jamesdimonaco/storf-reporter:latest`;
 
   // Add annotation type and input type
   cmd += ` -anno ${options.annotationType} ${options.inputType}`;
