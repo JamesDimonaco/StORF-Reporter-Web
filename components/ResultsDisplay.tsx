@@ -12,6 +12,7 @@ type JobStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 interface JobResult {
   status: JobStatus
+  progress?: number
   message?: string
   outputs?: {
     gff?: string
@@ -25,7 +26,6 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
   const [status, setStatus] = useState<JobStatus>('pending')
   const [result, setResult] = useState<JobResult | null>(null)
   const [polling, setPolling] = useState(true)
-  const [loadingResults, setLoadingResults] = useState(false)
 
   useEffect(() => {
     const pollStatus = async () => {
@@ -40,16 +40,9 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
 
         if (data.status === 'completed' || data.status === 'failed') {
           setPolling(false)
+          setResult(data)
           if (data.status === 'completed') {
-            setLoadingResults(true)
-            // Give a moment for the results to be fully available
-            setTimeout(() => {
-              setResult(data)
-              setLoadingResults(false)
-              onResultsReceived(data)
-            }, 1000)
-          } else {
-            setResult(data)
+            onResultsReceived(data)
           }
         } else {
           setResult(data)
@@ -62,12 +55,14 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
     }
 
     if (polling) {
-      const interval = setInterval(pollStatus, 2000) // Poll every 2 seconds
+      // Poll more frequently when job is running
+      const pollInterval = status === 'running' ? 500 : 2000; // 500ms when running, 2s otherwise
+      const interval = setInterval(pollStatus, pollInterval)
       pollStatus() // Initial poll
 
       return () => clearInterval(interval)
     }
-  }, [jobId, polling, onResultsReceived])
+  }, [jobId, polling, onResultsReceived, status])
 
   const downloadFile = async (fileType: 'gff' | 'fasta' | 'log') => {
     try {
@@ -107,19 +102,16 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
           {status === 'running' && (
             <>
               <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
-              <span className="text-gray-700">Analysis in progress...</span>
+              <span className="text-gray-700">
+                Analysis in progress...
+                {result?.progress && ` (${result.progress}%)`}
+              </span>
             </>
           )}
-          {status === 'completed' && !loadingResults && (
+          {status === 'completed' && (
             <>
               <CheckCircle className="h-5 w-5 text-green-500" />
               <span className="text-gray-700">Analysis completed successfully!</span>
-            </>
-          )}
-          {status === 'completed' && loadingResults && (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin text-green-500" />
-              <span className="text-gray-700">Loading results...</span>
             </>
           )}
           {status === 'failed' && (
@@ -149,11 +141,17 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
         {result?.error && (
           <div className="bg-red-50 border border-red-200 rounded p-4">
             <p className="text-sm text-red-800">{result.error}</p>
+            {result.error.includes('No workers available') && (
+              <p className="text-sm text-red-800 mt-2">
+                <strong>Troubleshooting:</strong> The worker service appears to be offline. 
+                Please check that the worker container is running on your Raspberry Pi.
+              </p>
+            )}
           </div>
         )}
 
         {/* Download Buttons */}
-        {status === 'completed' && !loadingResults && result?.outputs && (
+        {status === 'completed' && result?.outputs && (
           <div className="pt-4 space-y-3">
             <h3 className="text-lg font-medium text-gray-900">Download Results</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -192,7 +190,7 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
         )}
 
         {/* Log Preview */}
-        {!loadingResults && result?.outputs?.log && (
+        {result?.outputs?.log && (
           <div className="pt-4">
             <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis Log</h3>
             <pre className="bg-gray-100 p-4 rounded overflow-x-auto text-sm">

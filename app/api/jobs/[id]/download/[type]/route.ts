@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { storfQueue } from '@/lib/queue'
+import { promises as fs } from 'fs'
+import path from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 export async function GET(
   request: NextRequest,
@@ -28,9 +34,9 @@ export async function GET(
     }
 
     const result = queueJob.returnvalue
-    if (!result || !result.outputs) {
+    if (!result) {
       return NextResponse.json(
-        { error: 'No outputs available' },
+        { error: 'No results available' },
         { status: 404 }
       )
     }
@@ -43,19 +49,39 @@ export async function GET(
       // Return stdout log
       fileContent = Buffer.from(result.stdout || '')
       filename = 'stdout.log'
-    } else if (type === 'gff' && result.outputs.gff) {
-      // Return GFF file
-      fileContent = Buffer.from(result.outputs.gff.content, 'base64')
-      filename = result.outputs.gff.filename
-      if (result.outputs.gff.isGzipped) {
-        contentType = 'application/gzip'
-      }
-    } else if (type === 'fasta' && result.outputs.fasta) {
-      // Return FASTA file
-      fileContent = Buffer.from(result.outputs.fasta.content, 'base64')
-      filename = result.outputs.fasta.filename
-      if (result.outputs.fasta.isGzipped) {
-        contentType = 'application/gzip'
+    } else {
+      // For file downloads, read from the actual volume
+      try {
+        // Get the actual host path for the Docker volume
+        const volumeName = 'storf-reporter_storf-data'
+        const { stdout: volumePath } = await execAsync(`docker volume inspect ${volumeName} --format '{{.Mountpoint}}'`)
+        const hostPath = volumePath.trim()
+        
+        // Construct the job directory path
+        const jobDir = path.join(hostPath, jobId)
+        const outputDir = path.join(jobDir, 'output')
+        
+        if (type === 'gff' && result.outputs?.gff) {
+          const filePath = path.join(outputDir, result.outputs.gff.filename)
+          fileContent = await fs.readFile(filePath)
+          filename = result.outputs.gff.filename
+          if (result.outputs.gff.isGzipped) {
+            contentType = 'application/gzip'
+          }
+        } else if (type === 'fasta' && result.outputs?.fasta) {
+          const filePath = path.join(outputDir, result.outputs.fasta.filename)
+          fileContent = await fs.readFile(filePath)
+          filename = result.outputs.fasta.filename
+          if (result.outputs.fasta.isGzipped) {
+            contentType = 'application/gzip'
+          }
+        }
+      } catch (error) {
+        console.error('Error reading file from volume:', error)
+        return NextResponse.json(
+          { error: 'Failed to read file' },
+          { status: 500 }
+        )
       }
     }
 

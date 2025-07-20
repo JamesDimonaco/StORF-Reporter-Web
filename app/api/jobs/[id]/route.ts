@@ -22,6 +22,24 @@ export async function GET(
     const jobState = await queueJob.getState()
     const progress = queueJob.progress
     
+    // Check if job is stuck (waiting for more than 5 minutes)
+    if (jobState === 'waiting') {
+      const waitTime = Date.now() - queueJob.timestamp
+      if (waitTime > 5 * 60 * 1000) { // 5 minutes
+        console.warn(`Job ${jobId} has been waiting for ${Math.round(waitTime / 1000)}s`)
+        
+        // Check if there are any active workers
+        const workers = await storfQueue.getWorkers()
+        if (workers.length === 0) {
+          return NextResponse.json({
+            status: 'pending',
+            error: 'No workers available. Please ensure the worker service is running.',
+            waitTime: Math.round(waitTime / 1000)
+          })
+        }
+      }
+    }
+    
     let status = 'pending'
     if (jobState === 'waiting') status = 'pending'
     else if (jobState === 'active') status = 'running'

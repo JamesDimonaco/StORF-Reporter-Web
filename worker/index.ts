@@ -106,10 +106,10 @@ storfQueue.process(async (job) => {
 
         for (const file of outputFiles) {
           if (file.endsWith(".gff") || file.endsWith(".gff.gz")) {
-            const content = await fs.readFile(path.join(outputDir!, file));
+            const stats = await fs.stat(path.join(outputDir!, file));
             outputs.gff = {
               filename: file,
-              content: content.toString("base64"),
+              size: stats.size,
               isGzipped: file.endsWith(".gz"),
             };
           } else if (
@@ -120,10 +120,10 @@ storfQueue.process(async (job) => {
             file.endsWith(".fasta.gz") ||
             file.endsWith(".fna.gz")
           ) {
-            const content = await fs.readFile(path.join(outputDir!, file));
+            const stats = await fs.stat(path.join(outputDir!, file));
             outputs.fasta = {
               filename: file,
-              content: content.toString("base64"),
+              size: stats.size,
               isGzipped: file.endsWith(".gz"),
             };
           }
@@ -134,13 +134,24 @@ storfQueue.process(async (job) => {
     }
 
     // Return success result
-    return {
+    const result = {
       status: "completed",
       stdout,
       stderr,
       outputDir: data.outputDir,
       outputs,
     };
+    
+    console.log(`Job ${data.jobId} returning result with:`, {
+      stdoutLength: stdout.length,
+      stderrLength: stderr.length,
+      outputFiles: Object.keys(outputs),
+      outputSizes: Object.entries(outputs).map(([key, val]: [string, any]) => 
+        `${key}: ${val.content ? val.content.length : 0} bytes`
+      )
+    });
+    
+    return result;
   } catch (error: any) {
     console.error(`Job ${data.jobId} failed:`, error);
 
