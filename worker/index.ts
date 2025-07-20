@@ -55,14 +55,12 @@ storfQueue.process(async (job) => {
       console.error(`File not found at: ${inputPath}`);
     }
     
-    // Test if the file is accessible from within docker
-    const testCmd = `docker run --rm --network host -v "${path.dirname(inputPath!)}:/data" jamesdimonaco/storf-reporter:latest ls -la /data/`;
-    console.log(`Testing docker access: ${testCmd}`);
+    // Test if Docker is accessible
     try {
-      const { stdout: testOut } = await execAsync(testCmd);
-      console.log(`Docker can see files: ${testOut}`);
+      const { stdout: dockerTest } = await execAsync('docker --version');
+      console.log(`Docker version: ${dockerTest.trim()}`);
     } catch (err) {
-      console.error(`Docker access test failed: ${err}`);
+      console.error(`Docker not accessible: ${err}`);
     }
     
     // Execute docker command
