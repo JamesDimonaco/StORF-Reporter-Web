@@ -55,12 +55,18 @@ storfQueue.process(async (job) => {
       console.error(`File not found at: ${inputPath}`);
     }
     
-    // Test if Docker is accessible
+    // Test if Docker is accessible and can see the file
     try {
       const { stdout: dockerTest } = await execAsync('docker --version');
       console.log(`Docker version: ${dockerTest.trim()}`);
+      
+      // Test if the file is accessible inside a basic container
+      const testFileCmd = `docker run --rm -v "${path.dirname(inputPath!)}:/data" alpine:latest ls -la /data/`;
+      console.log(`Testing file access: ${testFileCmd}`);
+      const { stdout: lsOutput } = await execAsync(testFileCmd);
+      console.log(`Files in container: ${lsOutput}`);
     } catch (err) {
-      console.error(`Docker not accessible: ${err}`);
+      console.error(`Docker test failed: ${err}`);
     }
     
     // Execute docker command
