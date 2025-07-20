@@ -81,6 +81,9 @@ storfQueue.process(async (job) => {
     // Execute docker command
     console.log(`Executing: ${dockerCmd}`);
     const { stdout, stderr } = await execAsync(dockerCmd);
+    
+    console.log(`Command stdout (first 500 chars): ${stdout.substring(0, 500)}`);
+    console.log(`Command stderr (first 500 chars): ${stderr.substring(0, 500)}`);
 
     // Update job progress
     await job.progress(80);
@@ -99,6 +102,7 @@ storfQueue.process(async (job) => {
       // Read output files
       try {
         const outputFiles = await fs.readdir(outputDir!);
+        console.log(`Output files found: ${outputFiles.join(', ')}`);
 
         for (const file of outputFiles) {
           if (file.endsWith(".gff") || file.endsWith(".gff.gz")) {

@@ -39,9 +39,17 @@ export async function GET(
     // Get job result if completed
     if (jobState === 'completed' && queueJob.returnvalue) {
       const result = queueJob.returnvalue
-      response.outputs = {
-        stdout: result.stdout,
-        stderr: result.stderr
+      response.outputs = {}
+      
+      // Include file outputs if present
+      if (result.outputs) {
+        if (result.outputs.gff) response.outputs.gff = result.outputs.gff.filename
+        if (result.outputs.fasta) response.outputs.fasta = result.outputs.fasta.filename
+      }
+      
+      // Include log preview
+      if (result.stdout) {
+        response.outputs.log = result.stdout.substring(0, 5000) // First 5000 chars
       }
     }
 
