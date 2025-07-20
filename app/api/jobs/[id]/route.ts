@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { storfQueue } from '@/lib/queue'
-
-const JOBS_DIR = path.join(process.cwd(), 'jobs')
 
 export async function GET(
   request: NextRequest,
@@ -11,84 +7,47 @@ export async function GET(
 ) {
   try {
     const { id: jobId } = await params
-    const jobDir = path.join(JOBS_DIR, jobId)
-    const metadataPath = path.join(jobDir, 'metadata.json')
 
-    // Check if job exists
-    try {
-      await fs.access(metadataPath)
-    } catch {
+    // Check Bull queue for job status
+    const jobs = await storfQueue.getJobs(['waiting', 'active', 'completed', 'failed'])
+    const queueJob = jobs.find(job => job.data.jobId === jobId)
+    
+    if (!queueJob) {
       return NextResponse.json(
         { error: 'Job not found' },
         { status: 404 }
       )
     }
 
-    // Read metadata
-    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf-8'))
-
-    // Check Bull queue for job status
-    const jobs = await storfQueue.getJobs(['waiting', 'active', 'completed', 'failed'])
-    const queueJob = jobs.find(job => job.data.jobId === jobId)
+    const jobState = await queueJob.getState()
+    const progress = queueJob.progress
     
-    let status = metadata.status
-    if (queueJob) {
-      const jobState = await queueJob.getState()
-      if (jobState === 'waiting') status = 'pending'
-      else if (jobState === 'active') status = 'running'
-      else if (jobState === 'completed') status = 'completed'
-      else if (jobState === 'failed') status = 'failed'
-      
-      // Update metadata if status changed
-      if (status !== metadata.status) {
-        metadata.status = status
-        metadata.updatedAt = new Date().toISOString()
-        await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2))
-      }
-    }
+    let status = 'pending'
+    if (jobState === 'waiting') status = 'pending'
+    else if (jobState === 'active') status = 'running'
+    else if (jobState === 'completed') status = 'completed'
+    else if (jobState === 'failed') status = 'failed'
 
     // Prepare response
     const response: any = {
       status,
-      createdAt: metadata.createdAt,
-      updatedAt: metadata.updatedAt
+      progress,
+      createdAt: new Date(queueJob.timestamp).toISOString(),
+      updatedAt: queueJob.processedOn ? new Date(queueJob.processedOn).toISOString() : null
     }
 
-    if (metadata.error) {
-      response.error = metadata.error
-    }
-
-    // If completed, check for output files
-    if (metadata.status === 'completed') {
-      const outputDir = path.join(jobDir, 'output')
-      const outputs: any = {}
-
-      try {
-        const files = await fs.readdir(outputDir)
-        
-        // Look for output files
-        for (const file of files) {
-          if (file.endsWith('.gff') || file.endsWith('.gff.gz')) {
-            outputs.gff = file
-          } else if (file.endsWith('.fa') || file.endsWith('.fasta') || 
-                     file.endsWith('.fna') || file.endsWith('.fa.gz') || 
-                     file.endsWith('.fasta.gz') || file.endsWith('.fna.gz')) {
-            outputs.fasta = file
-          }
-        }
-
-        // Read log file if exists
-        try {
-          const log = await fs.readFile(path.join(jobDir, 'stdout.log'), 'utf-8')
-          outputs.log = log.substring(0, 5000) // First 5000 chars for preview
-        } catch {
-          // Log file might not exist
-        }
-
-        response.outputs = outputs
-      } catch {
-        // Output directory might not exist
+    // Get job result if completed
+    if (jobState === 'completed' && queueJob.returnvalue) {
+      const result = queueJob.returnvalue
+      response.outputs = {
+        stdout: result.stdout,
+        stderr: result.stderr
       }
+    }
+
+    // Get error if failed
+    if (jobState === 'failed' && queueJob.failedReason) {
+      response.error = queueJob.failedReason
     }
 
     return NextResponse.json(response)

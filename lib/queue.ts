@@ -30,8 +30,9 @@ export const storfQueue = new Bull('storf-jobs', {
 export interface StorfJobData {
   jobId: string
   filename: string
-  inputPath: string
-  outputDir: string
+  inputPath?: string
+  outputDir?: string
+  fileContent?: string  // Base64 encoded file content for Vercel mode
   options: {
     annotationType: string
     inputType: string

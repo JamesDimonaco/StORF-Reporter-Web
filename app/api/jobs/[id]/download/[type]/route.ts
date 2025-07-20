@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'fs'
-import path from 'path'
-
-const JOBS_DIR = path.join(process.cwd(), 'jobs')
+import { storfQueue } from '@/lib/queue'
 
 export async function GET(
   request: NextRequest,
@@ -10,7 +7,6 @@ export async function GET(
 ) {
   try {
     const { id: jobId, type } = await params
-    const jobDir = path.join(JOBS_DIR, jobId)
     
     // Validate type
     if (!['gff', 'fasta', 'log'].includes(type)) {
@@ -20,63 +16,60 @@ export async function GET(
       )
     }
 
-    // Check if job exists
-    try {
-      await fs.access(jobDir)
-    } catch {
+    // Get job from queue
+    const jobs = await storfQueue.getJobs(['completed'])
+    const queueJob = jobs.find(job => job.data.jobId === jobId)
+    
+    if (!queueJob) {
       return NextResponse.json(
-        { error: 'Job not found' },
+        { error: 'Job not found or not completed' },
         { status: 404 }
       )
     }
 
-    let filePath: string | null = null
+    const result = queueJob.returnvalue
+    if (!result || !result.outputs) {
+      return NextResponse.json(
+        { error: 'No outputs available' },
+        { status: 404 }
+      )
+    }
+
+    let fileContent: Buffer | null = null
+    let filename: string = ''
     let contentType: string = 'text/plain'
 
     if (type === 'log') {
       // Return stdout log
-      filePath = path.join(jobDir, 'stdout.log')
-    } else {
-      // Look for output files
-      const outputDir = path.join(jobDir, 'output')
-      const files = await fs.readdir(outputDir)
-
-      if (type === 'gff') {
-        const gffFile = files.find(f => f.endsWith('.gff') || f.endsWith('.gff.gz'))
-        if (gffFile) {
-          filePath = path.join(outputDir, gffFile)
-          if (gffFile.endsWith('.gz')) {
-            contentType = 'application/gzip'
-          }
-        }
-      } else if (type === 'fasta') {
-        const fastaFile = files.find(f => 
-          f.endsWith('.fa') || f.endsWith('.fasta') || f.endsWith('.fna') ||
-          f.endsWith('.fa.gz') || f.endsWith('.fasta.gz') || f.endsWith('.fna.gz')
-        )
-        if (fastaFile) {
-          filePath = path.join(outputDir, fastaFile)
-          if (fastaFile.endsWith('.gz')) {
-            contentType = 'application/gzip'
-          }
-        }
+      fileContent = Buffer.from(result.stdout || '')
+      filename = 'stdout.log'
+    } else if (type === 'gff' && result.outputs.gff) {
+      // Return GFF file
+      fileContent = Buffer.from(result.outputs.gff.content, 'base64')
+      filename = result.outputs.gff.filename
+      if (result.outputs.gff.isGzipped) {
+        contentType = 'application/gzip'
+      }
+    } else if (type === 'fasta' && result.outputs.fasta) {
+      // Return FASTA file
+      fileContent = Buffer.from(result.outputs.fasta.content, 'base64')
+      filename = result.outputs.fasta.filename
+      if (result.outputs.fasta.isGzipped) {
+        contentType = 'application/gzip'
       }
     }
 
-    if (!filePath) {
+    if (!fileContent) {
       return NextResponse.json(
         { error: 'File not found' },
         { status: 404 }
       )
     }
-
-    // Read and return file
-    const fileContent = await fs.readFile(filePath)
     
     return new NextResponse(fileContent, {
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="storf_results.${type}${contentType === 'application/gzip' ? '.gz' : ''}"`
+        'Content-Disposition': `attachment; filename="${filename}"`
       }
     })
   } catch (error) {
