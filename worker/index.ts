@@ -124,7 +124,8 @@ function buildDockerCommand(
   const mountDir = path.dirname(inputPath);
   const inputFile = path.basename(inputPath);
 
-  let cmd = `docker run --rm --network storf-network -v "${mountDir}:/data" -v "${outputDir}:/output" jamesdimonaco/storf-reporter:latest`;
+  // Use host network mode to avoid network name issues
+  let cmd = `docker run --rm --network host -v "${mountDir}:/data" -v "${outputDir}:/output" jamesdimonaco/storf-reporter:latest`;
 
   // Add annotation type and input type
   cmd += ` -anno ${options.annotationType} ${options.inputType}`;
