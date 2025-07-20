@@ -218,4 +218,58 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
+// Cleanup old job files every hour
+async function cleanupOldFiles() {
+  const jobsDir = '/app/jobs';
+  const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  
+  try {
+    const dirs = await fs.readdir(jobsDir);
+    const now = Date.now();
+    
+    for (const dir of dirs) {
+      const dirPath = path.join(jobsDir, dir);
+      const stats = await fs.stat(dirPath);
+      
+      if (stats.isDirectory() && (now - stats.mtimeMs) > maxAge) {
+        console.log(`Cleaning up old job directory: ${dir}`);
+        await fs.rm(dirPath, { recursive: true, force: true });
+      }
+    }
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+  }
+}
+
+// Run cleanup every hour
+setInterval(cleanupOldFiles, 60 * 60 * 1000);
+
+// Clean up old jobs from queue on startup
+async function cleanupQueue() {
+  try {
+    // Clean waiting jobs older than 1 hour
+    const waitingJobs = await storfQueue.getWaiting();
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    
+    for (const job of waitingJobs) {
+      if (job.timestamp < oneHourAgo) {
+        console.log(`Removing old waiting job: ${job.id}`);
+        await job.remove();
+      }
+    }
+    
+    // Clean completed jobs
+    await storfQueue.clean(3600 * 1000, 'completed'); // Jobs older than 1 hour
+    await storfQueue.clean(86400 * 1000, 'failed'); // Failed jobs older than 24 hours
+    
+    console.log('Queue cleanup completed');
+  } catch (error) {
+    console.error('Error cleaning up queue:', error);
+  }
+}
+
+// Run cleanup on startup
+cleanupOldFiles();
+cleanupQueue();
+
 console.log("StORF-Reporter worker started, waiting for jobs...");

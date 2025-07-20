@@ -16,8 +16,13 @@ export const redis = new Redis(redisConfig)
 export const storfQueue = new Bull('storf-jobs', {
   redis: redisConfig,
   defaultJobOptions: {
-    removeOnComplete: false, // Keep completed jobs for status checking
-    removeOnFail: false,    // Keep failed jobs for debugging
+    removeOnComplete: {
+      age: 3600, // Keep completed jobs for 1 hour
+      count: 100 // Keep max 100 completed jobs
+    },
+    removeOnFail: {
+      age: 86400 // Keep failed jobs for 24 hours
+    },
     attempts: 3,            // Retry failed jobs 3 times
     backoff: {
       type: 'exponential',

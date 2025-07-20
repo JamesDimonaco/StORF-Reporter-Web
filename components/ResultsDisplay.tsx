@@ -135,6 +135,16 @@ export function ResultsDisplay({ jobId, onResultsReceived }: ResultsDisplayProps
           Job ID: <code className="bg-gray-100 px-2 py-1 rounded">{jobId}</code>
         </div>
 
+        {/* Processing Notice */}
+        {(status === 'running' || status === 'pending') && (
+          <div className="bg-blue-50 border border-blue-200 rounded p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Please note:</strong> StORF analysis can take several minutes to complete depending on file size. 
+              Please do not refresh this page. Your results will appear automatically when ready.
+            </p>
+          </div>
+        )}
+
         {/* Error Message */}
         {result?.error && (
           <div className="bg-red-50 border border-red-200 rounded p-4">
