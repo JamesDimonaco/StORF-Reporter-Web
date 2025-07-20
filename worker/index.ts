@@ -40,7 +40,7 @@ storfQueue.process(async (job) => {
     }
 
     // Build docker command
-    const dockerCmd = buildDockerCommand(inputPath!, outputDir!, data.options);
+    const dockerCmd = await buildDockerCommand(inputPath!, outputDir!, data.options);
 
     // Update job progress
     await job.progress(20);
@@ -60,8 +60,17 @@ storfQueue.process(async (job) => {
       const { stdout: dockerTest } = await execAsync('docker --version');
       console.log(`Docker version: ${dockerTest.trim()}`);
       
-      // Test if the file is accessible inside a basic container
-      const testFileCmd = `docker run --rm -v "${path.dirname(inputPath!)}:/data" alpine:latest ls -la /data/`;
+      // Get the actual host path for the Docker volume
+      const volumeName = 'storf-reporter_storf-data';
+      const { stdout: volumePath } = await execAsync(`docker volume inspect ${volumeName} --format '{{.Mountpoint}}'`);
+      const hostPath = volumePath.trim();
+      const jobHostPath = hostPath + inputPath!.replace('/app/jobs', '');
+      
+      console.log(`Volume mount point: ${hostPath}`);
+      console.log(`Job file host path: ${jobHostPath}`);
+      
+      // Test if the file is accessible
+      const testFileCmd = `docker run --rm -v "${path.dirname(jobHostPath)}:/data" alpine:latest ls -la /data/`;
       console.log(`Testing file access: ${testFileCmd}`);
       const { stdout: lsOutput } = await execAsync(testFileCmd);
       console.log(`Files in container: ${lsOutput}`);
@@ -144,16 +153,25 @@ storfQueue.process(async (job) => {
   }
 });
 
-function buildDockerCommand(
+async function buildDockerCommand(
   inputPath: string,
   outputDir: string,
   options: any
-): string {
-  const mountDir = path.dirname(inputPath);
-  const inputFile = path.basename(inputPath);
+): Promise<string> {
+  // Get the actual host path for the Docker volume
+  const volumeName = 'storf-reporter_storf-data';
+  const { stdout: volumePath } = await execAsync(`docker volume inspect ${volumeName} --format '{{.Mountpoint}}'`);
+  const hostPath = volumePath.trim();
+  
+  // Convert container paths to host paths
+  const hostInputPath = hostPath + inputPath.replace('/app/jobs', '');
+  const hostOutputDir = hostPath + outputDir.replace('/app/jobs', '');
+  
+  const mountDir = path.dirname(hostInputPath);
+  const inputFile = path.basename(hostInputPath);
 
   // Use host network mode to avoid network name issues
-  let cmd = `docker run --rm --network host -v "${mountDir}:/data" -v "${outputDir}:/output" jamesdimonaco/storf-reporter:latest`;
+  let cmd = `docker run --rm --network host -v "${mountDir}:/data" -v "${hostOutputDir}:/output" jamesdimonaco/storf-reporter:latest`;
 
   // Add annotation type and input type as separate arguments to -anno
   cmd += ` -anno ${options.annotationType} ${options.inputType}`;
