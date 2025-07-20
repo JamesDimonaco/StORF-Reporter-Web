@@ -22,8 +22,8 @@ storfQueue.process(async (job) => {
     // Handle file content from Vercel (base64) or local path
 
     if (data.fileContent) {
-      // Vercel mode: decode base64 and save to temp
-      const tempDir = `/tmp/jobs/${data.jobId}`;
+      // Vercel mode: decode base64 and save to shared volume
+      const tempDir = `/app/jobs/${data.jobId}`;
       await fs.mkdir(tempDir, { recursive: true });
 
       inputPath = path.join(tempDir, data.filename);
